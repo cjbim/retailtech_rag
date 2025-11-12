@@ -7,48 +7,26 @@ function formatDateKorean(dateStr) {
     const year = parts[0];
     const month = String(parseInt(parts[1], 10));
     const day = String(parseInt(parts[2], 10));
-
     return `${year}년 ${month}월 ${day}일`;
 }
 
 function toSortableDateNum(dateStr) {
     if (!dateStr) return 0;
-
-//    console.log("[원본 dateStr]", dateStr);
-
-    // 숫자만 추출
     let digits = dateStr.replace(/\D/g, "");
-  //  console.log("[숫자만 추출]", digits);
-
-    // 6자리(YYYYM D)나 7자리(YYYYMM D or YYYY MDD) 보정
-    if (digits.length === 6) {
-        // 예: 202553 → 20250503
-        const year = digits.slice(0, 4);
-        const month = digits.slice(4, 5).padStart(2, "0");
-        const day = digits.slice(5).padStart(2, "0");
-        digits = year + month + day;
-    //    console.log("[6자리 보정됨]", digits);
-    } else if (digits.length === 7) {
-        const year = digits.slice(0, 4);
-        const month = digits.slice(4, 5).padStart(2, "0");
-        const day = digits.slice(5).padStart(2, "0");
-        digits = year + month + day;
-  //      console.log("[7자리 보정됨]", digits);
-    }
-
-    const result = digits.length >= 8 ? parseInt(digits.slice(0, 8), 10) : 0;
-//    console.log("[최종 리턴]", result);
-
-    return result;
+    if (digits.length < 8) return 0;
+    return parseInt(digits.slice(0, 8), 10);
 }
-
-
 
 // ✅ 검색 함수
 async function search() {
-    const question = document.getElementById('questionInput').value;
+    const question = document.getElementById('questionInput').value.trim();
     const resultDiv = document.getElementById('result');
     resultDiv.innerHTML = '⏳ 검색 중...';
+
+    if (!question) {
+        resultDiv.innerHTML = '<p style="color:red;">❌ 검색어를 입력해주세요.</p>';
+        return;
+    }
 
     try {
         const response = await fetch("/search/documents", {
@@ -58,78 +36,133 @@ async function search() {
         });
 
         const data = await response.json();
-
         if (data.error) {
             resultDiv.innerHTML = `<p style="color:red;">❌ ${data.error}</p>`;
             return;
         }
-       // data.documents.sort((a, b) => toSortableDateNum(b.date) - toSortableDateNum(a.date)); //날짜순 정렬
-        data.documents.sort((a, b) => b.accuracy - a.accuracy); // 정확도 순 정렬
+
+        // 정확도순 정렬
+        data.documents.sort((a, b) => parseFloat(b.score || b.accuracy) - parseFloat(a.score || a.accuracy));
 
         let html = `<p>🔎 총 ${data.result_count}건 검색됨</p>`;
+
         for (const [index, doc] of data.documents.entries()) {
             const safeId = `summary_${index}`;
-            const imageSrc = (doc.image_url && doc.image_url.trim() !== "") 
-                ? doc.image_url 
-                : "https://s1.tokenpost.kr/assets/images/tokenpost_new/common_new/logo.svg";
-
             html += `
                 <div class="result-card">
                     <div class="result-content">
-                        <div class="result-title">${doc.title || "제목 없음"}</div>
-                        <div class="result-meta">📝 기자: ${doc.reporter || "없음"} | ${formatDateKorean(doc.date)}</div>
-                        <div class="result-accuracy">🧠 정확도: ${doc.accuracy}</div>
+                        <div class="result-title">📌 ${index + 1}. ${doc.store_name || "점포명 없음"} (${doc.store_code || "-"})</div>
+                        <div class="result-meta">
+                            🆔 접수번호: ${doc.record_id || "-"}<br>
+                            📅 날짜: ${formatDateKorean(doc.date)}<br>
+                            ⚙️ 장애유형: ${doc.fault_major || "-"} > ${doc.fault_mid || "-"} > ${doc.fault_minor || "-"}<br>
+                            🧩 OCS 원인:<br>
+                                - 대분류: ${doc.ocs_cause_major || "-"}<br>
+                                - 중분류: ${doc.ocs_cause_mid || "-"}<br>
+                                - 소분류: ${doc.ocs_cause_minor || "-"}<br>
+                            🏢 처리부서: ${doc.department_main || "-"}<br>
+                       
+                            🚨 긴급도: ${doc.urgency || "-"}<br>
+                           
+                        </div>
+                        <div class="result-accuracy">🎯 정확도: ${doc.accuracy || doc.score || "0"}%</div>
+                        <div class="result-text">${doc.text ? doc.text.slice(0, 300) + (doc.text.length > 300 ? "..." : "") : "(본문 없음)"}</div>
                         <div class="result-buttons">
-                            <button 
-                                data-content="${encodeURIComponent(doc.content || '')}" 
-                                data-target="${safeId}" 
-                                onclick="summarizeFromButton(this)">요약하기</button>
-                            <a href="${doc.url}" target="_blank">
-                                <button>보러가기</button>
-                            </a>
+                            
+                        <!--    <button
+                            data-content="${encodeURIComponent(doc.text || '')}"
+                            data-target="${safeId}"
+                            data-store_name="${doc.store_name || ''}"
+                            data-store_code="${doc.store_code || ''}"
+                            data-date="${doc.date || ''}"
+                            data-title="${doc.title || ''}"
+                            data-fault_major="${doc.fault_major || ''}"
+                            data-fault_mid="${doc.fault_mid || ''}"
+                            data-fault_minor="${doc.fault_minor || ''}"
+                            data-urgency="${doc.urgency || ''}"
+                            data-department_main="${doc.department_main || ''}"
+                            data-progress="${doc.progress || ''}"
+                            data-ocs_major="${doc.ocs_cause_major || ''}"
+                            data-ocs_mid="${doc.ocs_cause_mid || ''}"
+                            data-ocs_minor="${doc.ocs_cause_minor || ''}"
+                            data-keywords="${doc.keywords || ''}"
+                            onclick="summarizeFromButton(this)">
+                            요약하기
+                            </button>
+                            -->
                         </div>
                         <div id="${safeId}"></div>
                     </div>
-                    <img src="${imageSrc}" alt="기사 이미지" class="result-thumb">
                 </div>
             `;
         }
         resultDiv.innerHTML = html;
+
     } catch (err) {
+        console.error(err);
         resultDiv.innerHTML = `<p style="color:red;">❌ 오류 발생: ${err.message}</p>`;
     }
 }
 
 // ✅ 버튼에서 호출되는 함수
 function summarizeFromButton(button) {
-    button.disabled = true;                  // 👉 버튼 비활성화
-    button.innerText = "요약하기";          // 👉 텍스트 변경 (선택사항)
-    button.style.opacity = "0.6";            // 👉 시각적으로 회색 느낌
-    button.style.cursor = "not-allowed";     // 👉 커서도 막힌 느낌
+    const docData = {
+        fault_major: button.dataset.fault_major || "-",
+        fault_mid: button.dataset.fault_mid || "-",
+        fault_minor: button.dataset.fault_minor || "-",
+        ocs_cause_major: button.dataset.ocs_major || "-",
+        ocs_cause_mid: button.dataset.ocs_mid || "-",
+        ocs_cause_minor: button.dataset.ocs_minor || "-",
+        store_name: button.dataset.store_name || "점포명 미상",
+        urgency: button.dataset.urgency || "-",
+        department_main: button.dataset.department_main || "-",
+        date: button.dataset.date || "날짜 미상",
+        content: decodeURIComponent(button.dataset.content || "")
+    };
+    console.log(docData);
 
-    const contentEncoded = button.dataset.content;
-    const targetId = button.dataset.target;
-    summarize(contentEncoded, targetId);
-}
-
-// ✅ 요약 함수
-async function summarize(contentEncoded, targetId) {
-    const content = decodeURIComponent(contentEncoded);
-
-    if (!content || content.length < 10) {
-        alert("⚠️ 요약할 본문이 없습니다.");
+    if (!docData.content) {
+        alert("본문이 없습니다.");
         return;
     }
 
+    summarize(docData, button.dataset.target);
+}
+
+
+
+// ✅ 요약 함수
+async function summarize(doc, targetId) {
+    const content = decodeURIComponent(doc.content || "");
     const targetDiv = document.getElementById(targetId);
-    targetDiv.className = "summary-box";   // ✅ 박스 스타일 적용
+
+    if (!content || content.length < 10) {
+        targetDiv.innerText = "⚠️ 요약할 본문이 없습니다.";
+        return;
+    }
+
+    targetDiv.className = "summary-box";
     targetDiv.innerText = "🧠 요약 중...";
 
     try {
+        const payload = {
+            content,
+            fault_major: doc.fault_major || "-",
+            fault_mid: doc.fault_mid || "-",
+            fault_minor: doc.fault_minor || "-",
+            ocs_cause_major: doc.ocs_cause_major || "-",
+            ocs_cause_mid: doc.ocs_cause_mid || "-",
+            ocs_cause_minor: doc.ocs_cause_minor || "-",
+            department_main: doc.department_main || "-",
+            urgency: doc.urgency || "-",
+            date: doc.date || "-",
+            store_name: doc.store_name || "-"
+        };
+
         const response = await fetch("/summarize", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ content })
+            body: JSON.stringify(payload)
         });
 
         const data = await response.json();
@@ -144,18 +177,21 @@ async function summarize(contentEncoded, targetId) {
                     const char = text.charAt(i);
                     targetDiv.innerHTML += (char === " " ? "&nbsp;" : char);
                     i++;
-                    setTimeout(typeWriter, 20);
+                    setTimeout(typeWriter, 15);
                 }
             }
             typeWriter();
         } else {
             targetDiv.innerText = "❌ 요약 실패";
         }
+
     } catch (err) {
         targetDiv.innerText = `❌ 요약 중 오류: ${err.message}`;
     }
 }
 
-// ✅ HTML의 onclick이 동작하도록 전역 등록
+
+
+// ✅ HTML onclick 이벤트 등록
 window.search = search;
 window.summarizeFromButton = summarizeFromButton;

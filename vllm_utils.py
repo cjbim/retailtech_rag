@@ -65,20 +65,58 @@ def clean_llm_keywords(raw_text: str) -> list:
     return [kw.strip() for kw in cleaned.split(",") if kw.strip()]
 
 
-# ✅ 4️⃣ 뉴스 기사 요약 함수
-def call_vllm_summarize_article(article_text, user_question=None):
-    cleaned_text = clean_article_text(article_text)
-    prompt = f"""다음은 뉴스 기사입니다. 본문의 핵심 정보만 간결하게 3문장 이내로 정리할 것.
+def call_vllm_summarize_article(data: dict, user_question: str = None):
+    """
+    스토리텔링 요약용 LLM 호출 함수
+    :param data: dict 형태로 전달된 장애 데이터 (FastAPI에서 그대로 전달됨)
+    :param user_question: 선택적 사용자 질문 (기존 구조 유지)
+    """
+
+    # 🔹 데이터 정리
+    content = clean_article_text(data.get("content", ""))
+    store_name = data.get("store_name", "")
+    date = data.get("date", "")
+    fault_major = data.get("fault_major", "")
+    fault_mid = data.get("fault_mid", "")
+    fault_minor = data.get("fault_minor", "")
+    ocs_major = data.get("ocs_cause_major", "")
+    ocs_mid = data.get("ocs_cause_mid", "")
+    ocs_minor = data.get("ocs_cause_minor", "")
+    department = data.get("department_main", "")
+    urgency = data.get("urgency", "")
+
+    # 🔸 프롬프트 구성
+    prompt = f"""
+다음은 {store_name} 점포에서 발생한 장애 내역입니다.
+현장 엔지니어가 상급 관리자에게 구두로 보고하듯, 자연스럽고 간결한 스토리텔링 형식으로 정리해 주세요.
 
 조건:
-- "요약" 이라는 단어를 사용 금지
-- 요약을 작성하되, 같은 사실이나 숫자를 반복하지 말 것.
+- "요약"이라는 단어를 사용하지 말 것
+- 세 문장 이내로 간결하게 작성
+- 장애 발생 → 원인 → 조치/결과 순서로 기술
+- 긴급도(A~C)는 문맥에 녹여 자연스럽게 반영할 것
+- 숫자, 코드명(VKV47 등)은 정확하게 유지할 것
+- 장애 원인과 처리 결과만 간결하게 2~3문장으로 정리
+- 사실 근거가 없는 추론 문장은 작성하지 말 것
 
+📅 날짜: {date}
+🏪 점포명: {store_name}
+⚙️ 장애유형: {fault_major} > {fault_mid} > {fault_minor}
+🧩 OCS 원인:
+  - 대분류: {ocs_major}
+  - 중분류: {ocs_mid}
+  - 소분류: {ocs_minor}
+🏢 처리부서: {department}
+🚨 긴급도: {urgency}
 
 [본문]
-{cleaned_text}
+{content}
 """
-    raw_summary = call_vllm(prompt, max_tokens=512)  # ❌ stop 제거
+
+    # 🔸 vLLM 호출 (max_tokens은 상황에 맞게)
+    raw_summary = call_vllm(prompt, max_tokens=1024)
+
+    # 🔸 후처리: 의미 유지한 문장 정리
     return clean_sentences_preserve_meaning(raw_summary)
 
 
